@@ -1,0 +1,20 @@
+
+---
+
+## ✅ 3. `.gitignore`
+
+```gitignore
+*.pyc
+__pycache__/
+*.swp
+*.swo
+*.DS_Store
+.env
+node_modules/
+*.log
+sites/assets/
+sites/libraries/
+sites/apps.txt
+sites/common_site_config.json
+sites/*/site_config.json
+sites/*/private/backups/

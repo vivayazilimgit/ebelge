@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: ebelge
+Version: 0.0.1
+Summary: E-Belge Yönetim Sistemi
+Author: Viva Yazılım
+Author-email: murathan@vivayazilim.com
+Dynamic: author
+Dynamic: author-email
+Dynamic: summary

@@ -1,0 +1,3 @@
+# ebelge uygulaması için harici Python paketleri
+# Örnek:
+# requests==2.31.0

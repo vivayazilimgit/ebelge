@@ -1,0 +1,195 @@
+import requests
+import frappe
+import time
+
+class IzibizClient:
+    TOKEN_EXPIRY_MARGIN = 60  # saniye, token süresinden önce yenile
+
+    def __init__(self):
+        settings = frappe.get_single("EBelge Ayarlari")
+        self.is_test = settings.is_test_mode
+
+        # Doctype’dan gelen kullanıcı adı ve şifre
+        self.username = (settings.integrator_user or "").strip()
+        self.password = (settings.integrator_pass or "").strip()
+
+        self.company_name = getattr(settings, 'company', None)
+        self.vkn = getattr(settings, 'vkn', None)
+
+        # Eğer VKN formda yoksa şirket kartından çek
+        if not self.vkn and self.company_name:
+            self.vkn = frappe.db.get_value("Company", self.company_name, "tax_id")
+
+        # Test ve canlı ortam URL'leri (mutlaka .com.tr olacak)
+        self.base_url = "https://apitest.izibiz.com.tr" if self.is_test else "https://api.izibiz.com.tr"
+
+        # Debug çıktı
+        print(f"[DEBUG] is_test: {self.is_test}, base_url: {self.base_url}")
+
+        self.token = None
+        self.token_expiry = 0
+
+    def authenticate(self):
+        url = f"{self.base_url}/v1/auth/token"
+        payload = {
+            "username": self.username,
+            "password": self.password
+        }
+
+        print(f"[DEBUG] Payload to send: username='{self.username}', password='{self.password}'")
+        try:
+            response = requests.post(url, json=payload, verify=False)
+            print(f"[DEBUG] Response status: {response.status_code}")
+            print(f"[DEBUG] Response text: {response.text}")
+            print(f"Şifre karakter kodları: {[ord(c) for c in self.password]}")
+
+
+            response.raise_for_status()
+            data = response.json()
+
+            self.token = data.get("data", {}).get("accessToken")
+            self.token_expiry = time.time() + 3600 - self.TOKEN_EXPIRY_MARGIN
+
+            print("[DEBUG] Token başarıyla alındı.")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Token alma hatası: {e}")
+            return False
+
+    def get_token(self):
+        if self.token is None or time.time() >= self.token_expiry:
+            if not self.authenticate():
+                raise Exception("İZİBİZ API token alınamadı.")
+        return self.token
+
+    def request(self, method, endpoint, payload=None, params=None):
+        token = self.get_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.base_url}{endpoint}"
+
+        try:
+            response = requests.request(method, url, json=payload, params=params, headers=headers, verify=False)
+            response.raise_for_status()
+            return response.json()
+        except requests.HTTPError as http_err:
+            print(f"[ERROR] HTTP hatası: {http_err} - {response.text}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] İstek hatası: {e}")
+            raise
+
+    def test_connection(self):
+        try:
+            result = self.request("GET", "/v1/einvoices")
+            print("[DEBUG] Test bağlantısı başarılı.")
+            return result
+        except Exception as e:
+            print(f"[ERROR] Test bağlantı hatası: {e}")
+            return None
+@frappe.whitelist()
+def test_custom_connection(user_code, password, vkn, gb, pk, environment, test_url=None, live_url=None):
+    try:
+        # Ortama göre doğru URL'yi seç
+        if environment == "Test":
+            base_url = test_url
+        else:
+            base_url = live_url
+
+        if not base_url:
+            return {
+                "status": "error",
+                "message": "Seçilen ortama ait API URL girilmemiş."
+            }
+
+        # Gerekiyorsa endpoint ekle
+        if "/auth/token" in base_url:
+            login_url = base_url
+        else:
+            login_url = f"{base_url}/v1/auth/token"
+
+        payload = {
+            "username": user_code,
+            "password": password
+        }
+
+        print(f"[DEBUG] API URL: {login_url}")
+        print(f"[DEBUG] Payload: {payload}")
+
+        response = requests.post(login_url, json=payload, verify=False)
+        response.raise_for_status()
+
+        data = response.json()
+        token = data.get("data", {}).get("accessToken")
+
+        if token:
+            return {
+                "status": "success",
+                "message": "Bağlantı başarılı, token alındı.",
+                "token": token
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Token alınamadı. Yanıt geçersiz.",
+                "raw": data
+            }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Hata oluştu: {str(e)}"
+        }
+@frappe.whitelist()
+def test_custom_connection(user_code, password, vkn, gb, pk, environment, test_url=None, live_url=None):
+    try:
+        base_url = test_url.strip() if environment == "Test" else live_url.strip()
+
+        if not base_url:
+            return {
+                "status": "error",
+                "message": "Seçilen ortama ait API URL girilmemiş."
+            }
+
+        # /v1/auth/token varsa birleştirme
+        login_url = base_url if "/auth/token" in base_url else f"{base_url.rstrip('/')}/v1/auth/token"
+
+        payload = {
+            "username": user_code.strip(),
+            "password": password.strip()
+        }
+
+        print(f"[DEBUG] API URL: {login_url}")
+        print(f"[DEBUG] Payload: {payload}")
+
+        response = requests.post(login_url, json=payload, verify=False)
+        response.raise_for_status()
+        data = response.json()
+
+        token = data.get("data", {}).get("accessToken")
+
+        if token:
+            return {
+                "status": "success",
+                "message": "Bağlantı başarılı, token alındı.",
+                "token": token
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Token alınamadı. Yanıt geçersiz.",
+                "raw": data
+            }
+
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": "error",
+            "message": f"Bağlantı hatası: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Genel hata: {str(e)}"
+        }

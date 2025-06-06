@@ -1,0 +1,23 @@
+include MANIFEST.in
+include setup.py
+include requirements.txt
+
+recursive-include ebelge *.html
+recursive-include ebelge *.py
+recursive-include ebelge *.json
+recursive-include ebelge *.js
+recursive-include ebelge *.css
+recursive-include ebelge *.txt
+recursive-include ebelge *.md
+recursive-include ebelge *.png
+recursive-include ebelge *.svg
+recursive-include ebelge *.csv
+
+recursive-include ebelge/public *
+recursive-include ebelge/config *
+recursive-include ebelge/doctype *
+recursive-include ebelge/templates *
+recursive-include ebelge/translations *
+
+global-exclude *.pyc
+global-exclude __pycache__/*
